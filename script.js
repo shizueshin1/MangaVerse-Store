@@ -352,6 +352,7 @@ let cart           = JSON.parse(localStorage.getItem('mv_cart')    || '[]');
 let productReviews = JSON.parse(localStorage.getItem('mv_reviews') || '{}');
 let users          = JSON.parse(localStorage.getItem('mv_users')    || '[]');
 let session        = JSON.parse(localStorage.getItem('mv_session')  || 'null');
+let orders         = JSON.parse(localStorage.getItem('mv_orders')   || '[]');
 let currentFilter  = 'all';
 let currentSearch  = '';
 let currentProductId = null;
@@ -363,6 +364,7 @@ function saveCart()    { localStorage.setItem('mv_cart',    JSON.stringify(cart)
 function saveReviews() { localStorage.setItem('mv_reviews', JSON.stringify(productReviews)); }
 function saveUsers()   { localStorage.setItem('mv_users',   JSON.stringify(users)); }
 function saveSession() { localStorage.setItem('mv_session', JSON.stringify(session)); }
+function saveOrders()  { localStorage.setItem('mv_orders',   JSON.stringify(orders)); }
 
 
 // ── COVER IMAGE HELPERS ───────────────────────────────────────
@@ -732,23 +734,59 @@ function handleCheckoutOverlay(e) {
 }
 
 function placeOrder() {
-  const name    = document.getElementById('ckName').value.trim();
-  const email   = document.getElementById('ckEmail').value.trim();
-  const address = document.getElementById('ckAddress').value.trim();
-  const payment = document.getElementById('ckPayment').value;
+  const name     = document.getElementById('ckName').value.trim();
+  const email    = document.getElementById('ckEmail').value.trim();
+  const address  = document.getElementById('ckAddress').value.trim();
+  const province = document.getElementById('ckProvince') ? document.getElementById('ckProvince').value.trim() : '';
+  const zip      = document.getElementById('ckZip') ? document.getElementById('ckZip').value.trim() : '';
+  const payment  = document.getElementById('ckPayment').value;
 
   if (!name || !email || !address || !payment) {
     showToast('Please fill in all fields.');
     return;
   }
 
+  // Create order items array
+  const orderItems = cart.map(item => {
+    const p = PRODUCTS.find(x => x.id === item.id);
+    return {
+      id: item.id,
+      qty: item.qty,
+      price: p.price,
+      title: p.title,
+      localImage: p.localImage,
+      image: p.image,
+      coverArt: p.coverArt
+    };
+  });
+
+  const fullAddress = [address, province, zip].filter(Boolean).join(', ');
+
+  const newOrder = {
+    id: 'MV-' + Math.floor(100000 + Math.random() * 900000),
+    userEmail: session ? session.email.toLowerCase() : email.toLowerCase(),
+    name,
+    email: email.toLowerCase(),
+    address: fullAddress,
+    payment,
+    date: new Date().toISOString(),
+    items: orderItems,
+    total: getCartTotal(),
+    status: 'Processing'
+  };
+
+  orders.push(newOrder);
+  saveOrders();
+
   cart = [];
   saveCart();
   updateCartBadge();
+
   document.getElementById('checkoutForm').style.display = 'none';
   document.getElementById('orderSuccess').style.display = 'block';
   renderGrid();
 }
+
 
 
 // ── TOAST ─────────────────────────────────────────────────────
@@ -939,6 +977,94 @@ function updateCheckoutPreFill() {
       ckEmail.value = session.email;
     }
   }
+}
+
+
+// ── PURCHASES HISTORY ─────────────────────────────────────────
+function openPurchasesModal() {
+  document.getElementById('userDropdown').classList.remove('open');
+  if (!session) {
+    openAuthModal();
+    showToast('Please log in to view your purchases. 🔐');
+    return;
+  }
+  renderPurchases();
+  document.getElementById('purchasesOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closePurchasesModal() {
+  document.getElementById('purchasesOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function handlePurchasesOverlay(e) {
+  if (e.target === document.getElementById('purchasesOverlay')) closePurchasesModal();
+}
+
+function renderPurchases() {
+  const container = document.getElementById('purchasesList');
+  if (!container) return;
+
+  if (!session) {
+    container.innerHTML = '<div class="purchase-empty">Please log in to view purchases.</div>';
+    return;
+  }
+
+  const userOrders = orders.filter(o => o.userEmail === session.email.toLowerCase());
+
+  if (!userOrders.length) {
+    container.innerHTML = '<div class="purchase-empty">No purchases found. Time to buy some manga! 📚</div>';
+    return;
+  }
+
+  container.innerHTML = userOrders.slice().reverse().map(order => {
+    const formattedDate = new Date(order.date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const itemsHTML = order.items.map(item => {
+      const thumbHTML = (!item.localImage && !item.image)
+        ? `<div class="purchase-item-thumb"><div class="thumb-fallback svg-cover" style="display:flex; width:100%; height:100%; background-image:url('${item.coverArt}')"></div></div>`
+        : `<div class="purchase-item-thumb">
+            <img src="${item.localImage || item.image}" alt="${item.title}" onerror="handleImageError(this, '${item.image}')">
+            <div class="thumb-fallback svg-cover" style="background-image:url('${item.coverArt}')"></div>
+           </div>`;
+
+      return `
+        <div class="purchase-item">
+          ${thumbHTML}
+          <div class="purchase-item-details">
+            <div class="purchase-item-title">${item.title}</div>
+            <div class="purchase-item-meta">Qty: ${item.qty} • ₱${item.price.toLocaleString()} each</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="purchase-card">
+        <div class="purchase-header">
+          <div>
+            <div class="purchase-id">${order.id}</div>
+            <div class="purchase-date">${formattedDate}</div>
+          </div>
+          <span class="purchase-status">${order.status || 'Processing'}</span>
+        </div>
+        <div class="purchase-items">
+          ${itemsHTML}
+        </div>
+        <div class="purchase-footer">
+          <span>Payment: <strong>${order.payment}</strong></span>
+          <span class="purchase-total">Total: ₱${order.total.toLocaleString()}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 

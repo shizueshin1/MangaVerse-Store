@@ -26,6 +26,7 @@
         </button>
         <div class="user-dropdown" id="userDropdown">
           <div class="dropdown-header" id="dropdownHeader">Hi, Guest</div>
+          <button class="dropdown-item" onclick="openPurchasesModal()">My Purchases</button>
           <button class="dropdown-item" onclick="logout()">Logout</button>
         </div>
       </div>
@@ -175,6 +176,15 @@
         <h3>Order Placed!</h3>
         <p>Thank you for your purchase. Your manga is on its way! 📦</p>
       </div>
+    </div>
+  </div>
+
+  <!-- ── PURCHASES MODAL ── -->
+  <div class="modal-overlay" id="purchasesOverlay" onclick="handlePurchasesOverlay(event)">
+    <div class="checkout-modal purchases-modal" id="purchasesModal">
+      <button class="modal-close" onclick="closePurchasesModal()">✕</button>
+      <h2>My Purchases</h2>
+      <div id="purchasesList" class="purchases-list"></div>
     </div>
   </div>
 
